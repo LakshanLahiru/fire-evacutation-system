@@ -1,0 +1,12 @@
+pandas
+numpy
+requests
+fastapi
+uvicorn
+pydantic
+matplotlib
+opencv-python
+ultralytics
+websockets
+threading
+python-multipart
