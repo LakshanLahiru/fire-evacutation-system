@@ -1,0 +1,114 @@
+I have requirement that is if I upload vedio (it should be capability of update several vedio ) systeme should have to 
+identyfy pepoles inside of them  after that  systeme should mark id for that given person if same person has another vedio 
+id should be same - id is depend on similarity of given person  it depends on color features of extraction of person image
+I already code that but it have some issues and I want to updated one for that I use to do that
+services folder -> (reid,tracker,worker,detector) in api folder  ->(reid.py) static folder index 
+And use EAAI2025Re-Id_evacuationOA[1].pdf  this pdf to find method it has  method to do that 
+
+🧠 How This System Works — Full Explanation
+
+The system does 3 things:
+
+1️⃣ Detect people in each camera
+2️⃣ Extract each person’s identity (Re-ID embedding vector)
+3️⃣ Match people across cameras (Lobby → Staircase)
+4️⃣ Count & calculate density (people/m²)
+
+Let’s break it down.
+
+1️⃣ Person Detection (YOLOv8)
+🔹 Input
+
+A video frame from Camera 1 (lobby) or Camera 2 (staircase)
+
+🔹 Process
+
+YOLOv8 pretrained model detects:
+
+Person bounding boxes
+
+Location of each person
+
+Code:
+
+results = detector(frame, classes=[0])
+
+
+This gives you boxes like:
+
+[
+  [x1, y1, x2, y2],  # Person 1
+  [x1, y1, x2, y2],  # Person 2
+]
+
+🔹 Output
+
+Person count + each person's cropped image
+
+YOLO is only used to detect where the person is.
+
+2️⃣ Re-ID Feature Extraction (OSNet)
+
+This is exactly what the research paper does:
+they use a pretrained OSNet Re-ID model to extract a 512-dim vector for each person.
+
+🔹 Input
+
+A crop of a person:
+
+frame[y1:y2, x1:x2]
+
+🔹 Process
+
+OSNet transforms the crop into a 512-dimensional identity vector:
+
+feature = get_reid_feature(crop)
+
+
+This vector captures:
+
+Clothing color
+
+Silhouette
+
+Bag shape
+
+Shoes
+
+Body shape
+
+🔹 Output Example
+[0.231, -0.118, 0.903, ...]   # 512 values
+
+
+This is the person’s “fingerprint”.
+
+⚠️ No training is needed — OSNet is pre-trained.
+
+3️⃣ Identity Matching (Re-ID)
+
+The key idea:
+
+👉 A person walking from Lobby → Staircase
+should be matched using similarity.
+
+We store all known identities globally:
+
+identity_db = {
+    1: feature_vector_1,
+    2: feature_vector_2,
+    ...
+}
+
+
+When we see a new person, we compute similarity:
+
+cosine_similarity(new_feature, existing_feature)
+
+
+If similarity > threshold → SAME PERSON
+
+If not → NEW PERSON (assign new ID)
+
+
+do my job properly 

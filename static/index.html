@@ -1,0 +1,549 @@
+<!-- static/index.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Multi-Video Person Re-Identification System</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%); 
+      color: #e6eef6; 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      padding: 20px; 
+      min-height: 100vh;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #2a3f5f;
+    }
+    
+    h1 { 
+      color: #61dafb; 
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 0 0 20px rgba(97, 218, 251, 0.5);
+    }
+    
+    .subtitle {
+      color: #9aa9b2;
+      font-size: 1.1em;
+    }
+    
+    #status { 
+      text-align: center;
+      margin-bottom: 20px; 
+      padding: 10px;
+      background: rgba(97, 218, 251, 0.1);
+      border-radius: 8px;
+    }
+    
+    #ws-state {
+      font-weight: 600;
+      padding: 5px 15px;
+      border-radius: 20px;
+      display: inline-block;
+    }
+    
+    .ws-connected { background: #10b981; color: white; }
+    .ws-disconnected { background: #ef4444; color: white; }
+    
+    .controls { 
+      background: #0b1b24; 
+      padding: 20px; 
+      border-radius: 12px; 
+      margin-bottom: 20px;
+      border: 1px solid #2a3f5f;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    
+    .controls h3 {
+      color: #61dafb;
+      margin-bottom: 15px;
+    }
+    
+    .upload-section {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    
+    input[type="file"] {
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    input, button { 
+      padding: 12px 20px; 
+      border-radius: 8px; 
+      border: 1px solid #2a3f5f; 
+      background: #06131a; 
+      color: #e6eef6;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    
+    button { 
+      cursor: pointer; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    button.danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    }
+    
+    button.success {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .stat-card {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2a1f4a 100%);
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+      border: 1px solid #3a4f6f;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    
+    .stat-label {
+      color: #9aa9b2;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+    }
+    
+    .stat-value {
+      color: #61dafb;
+      font-size: 2.5em;
+      font-weight: 700;
+    }
+    
+    #grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); 
+      gap: 20px; 
+      margin-bottom: 20px;
+    }
+    
+    .card { 
+      background: linear-gradient(135deg, #0b1b24 0%, #1a1f3a 100%); 
+      padding: 20px; 
+      border-radius: 12px; 
+      border: 1px solid #2a3f5f;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 16px rgba(97, 218, 251, 0.2);
+    }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #2a3f5f;
+    }
+    
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #61dafb;
+    }
+    
+    .status-badge {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .status-running { background: #10b981; color: white; }
+    .status-stopped { background: #ef4444; color: white; }
+    
+    .label { 
+      color: #9aa9b2; 
+      font-size: 13px; 
+      margin-top: 10px;
+      display: block;
+    }
+    
+    .value { 
+      font-weight: 600; 
+      margin-left: 6px; 
+      color: #e6eef6;
+      font-size: 16px;
+    }
+    
+    .identities-list {
+      margin-top: 10px;
+      padding: 10px;
+      background: rgba(97, 218, 251, 0.05);
+      border-radius: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    
+    .identity-chip {
+      display: inline-block;
+      padding: 5px 10px;
+      margin: 3px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .section-title {
+      color: #61dafb;
+      font-size: 1.5em;
+      margin: 30px 0 15px 0;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #2a3f5f;
+    }
+    
+    .identity-table {
+      background: #0b1b24;
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid #2a3f5f;
+      overflow-x: auto;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #2a3f5f;
+    }
+    
+    th {
+      color: #61dafb;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: 1px;
+    }
+    
+    tr:hover {
+      background: rgba(97, 218, 251, 0.05);
+    }
+    
+    .cross-video-badge {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: white;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🎯 Multi-Video Person Re-Identification System</h1>
+    <p class="subtitle">Track people across multiple videos using AI-powered Re-ID</p>
+  </div>
+
+  <div id="status">
+    WebSocket: <span id="ws-state">Connecting...</span>
+  </div>
+
+  <div class="controls">
+    <h3>📤 Upload Videos</h3>
+    <div class="upload-section">
+      <input type="file" id="file" multiple accept="video/*" />
+      <button id="upload" class="success">Upload & Start Processing</button>
+      <button id="stopall" class="danger">Stop All Videos</button>
+      <button id="reset" class="danger">Reset Identities</button>
+    </div>
+    <small style="color: #9aa9b2;">💡 Upload multiple videos to track people across them</small>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Active Videos</div>
+      <div class="stat-value" id="stat-videos">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Identities</div>
+      <div class="stat-value" id="stat-identities">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Cross-Video Matches</div>
+      <div class="stat-value" id="stat-cross">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Current People</div>
+      <div class="stat-value" id="stat-people">0</div>
+    </div>
+  </div>
+
+  <h2 class="section-title">📹 Active Videos</h2>
+  <div id="grid"></div>
+
+  <h2 class="section-title">👥 Global Identities</h2>
+  <div class="identity-table">
+    <table id="identity-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Videos Seen</th>
+          <th>Observations</th>
+          <th>First Seen</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody id="identity-tbody">
+        <tr><td colspan="5" style="text-align:center; color:#9aa9b2;">No identities yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+<script>
+const ws = new WebSocket("ws://" + window.location.host + "/ws");
+const wsState = document.getElementById("ws-state");
+const grid = document.getElementById("grid");
+const fileInput = document.getElementById("file");
+const uploadBtn = document.getElementById("upload");
+const stopAllBtn = document.getElementById("stopall");
+const resetBtn = document.getElementById("reset");
+
+let identityStats = {};
+
+ws.onopen = ()=>{ 
+  wsState.innerText = "Connected"; 
+  wsState.className = "ws-connected";
+};
+
+ws.onclose = ()=>{ 
+  wsState.innerText = "Disconnected"; 
+  wsState.className = "ws-disconnected";
+};
+
+ws.onerror = ()=>{ 
+  wsState.innerText = "Error"; 
+  wsState.className = "ws-disconnected";
+};
+
+ws.onmessage = (ev) => {
+  try {
+    const data = JSON.parse(ev.data);
+    render(data);
+    fetchIdentities();  // Fetch global identities
+  } catch(e){
+    console.error("WS error:", e);
+  }
+};
+
+function render(data){
+  grid.innerHTML = "";
+  const keys = Object.keys(data);
+  
+  // Update stats
+  const activeVideos = keys.filter(k => data[k].running).length;
+  const totalPeople = keys.reduce((sum, k) => sum + (data[k].persons || 0), 0);
+  
+  document.getElementById("stat-videos").innerText = activeVideos;
+  document.getElementById("stat-people").innerText = totalPeople;
+  
+  if (keys.length === 0) { 
+    grid.innerHTML = "<div style='color:#9aa9b2; text-align:center; padding:40px;'>📹 No active videos. Upload videos to start tracking!</div>"; 
+    return; 
+  }
+  
+  keys.forEach(k => {
+    const info = data[k];
+    const card = document.createElement("div");
+    card.className = "card";
+    
+    const globalIds = info.global_ids || [];
+    const uniqueIdentities = info.unique_identities || 0;
+    
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="card-title">📹 ${info.camera}</span>
+        <span class="status-badge ${info.running ? 'status-running' : 'status-stopped'}">
+          ${info.running ? '● Running' : '○ Stopped'}
+        </span>
+      </div>
+      
+      <div>
+        <span class="label">👥 Current People:</span>
+        <span class="value">${info.persons || 0}</span>
+      </div>
+      
+      <div>
+        <span class="label">🆔 Unique Identities:</span>
+        <span class="value">${uniqueIdentities}</span>
+      </div>
+      
+      <div>
+        <span class="label">📊 Density (people/m²):</span>
+        <span class="value">${(info.density || 0).toFixed(3)}</span>
+      </div>
+      
+      <div>
+        <span class="label">⚡ FPS:</span>
+        <span class="value">${info.fps}</span>
+      </div>
+      
+      <div>
+        <span class="label">🎬 Frames:</span>
+        <span class="value">${info.frames_processed || 0}</span>
+      </div>
+      
+      ${globalIds.length > 0 ? `
+        <div class="label">🔍 Person IDs in frame:</div>
+        <div class="identities-list">
+          ${globalIds.map(id => `<span class="identity-chip">ID: ${id}</span>`).join('')}
+        </div>
+      ` : ''}
+      
+      <div style="margin-top:15px;">
+        <button onclick="stopCam('${info.camera}')" class="danger" style="width:100%;">⛔ Stop Video</button>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function stopCam(name){
+  fetch("/stop_camera", {
+    method:"POST", 
+    headers: {'Content-Type':'application/json'}, 
+    body: JSON.stringify({cam_name:name})
+  })
+  .then(r=>r.json())
+  .then(j=>{
+    alert("✅ Stopped: " + name);
+  })
+  .catch(e=>alert("❌ Error: " + e));
+}
+
+uploadBtn.onclick = ()=>{
+  const files = fileInput.files;
+  if (!files || files.length === 0) { 
+    alert("⚠️ Please select video files first!"); 
+    return; 
+  }
+  
+  const fd = new FormData();
+  for(let i = 0; i < files.length; i++) {
+    fd.append("files", files[i]);
+  }
+  fd.append("area_m2", "50");
+  
+  uploadBtn.disabled = true;
+  uploadBtn.innerText = "⏳ Uploading...";
+  
+  fetch("/upload_multiple", {method:"POST", body: fd})
+    .then(r=>r.json())
+    .then(j=>{ 
+      alert(`✅ Started processing ${j.uploaded} video(s)!`);
+      fileInput.value = "";
+      uploadBtn.disabled = false;
+      uploadBtn.innerText = "Upload & Start Processing";
+    })
+    .catch(e=>{
+      alert("❌ Error: " + e);
+      uploadBtn.disabled = false;
+      uploadBtn.innerText = "Upload & Start Processing";
+    });
+};
+
+stopAllBtn.onclick = ()=>{
+  if (!confirm("⚠️ Stop all videos?")) return;
+  fetch("/stop_all", {method:"POST"})
+    .then(r=>r.json())
+    .then(j=>alert("✅ Stopped all videos"))
+    .catch(e=>alert("❌ Error: " + e));
+};
+
+resetBtn.onclick = ()=>{
+  if (!confirm("⚠️ Reset all person identities? This cannot be undone!")) return;
+  fetch("/reset_identities", {method:"POST"})
+    .then(r=>r.json())
+    .then(j=>{
+      alert("✅ All identities have been reset");
+      fetchIdentities();
+    })
+    .catch(e=>alert("❌ Error: " + e));
+};
+
+function fetchIdentities() {
+  fetch("/identities")
+    .then(r=>r.json())
+    .then(data=>{
+      identityStats = data.statistics || {};
+      document.getElementById("stat-identities").innerText = identityStats.total_identities || 0;
+      document.getElementById("stat-cross").innerText = identityStats.cross_video_identities || 0;
+      
+      renderIdentityTable(data.identities || {});
+    })
+    .catch(e=>console.error("Error fetching identities:", e));
+}
+
+function renderIdentityTable(identities) {
+  const tbody = document.getElementById("identity-tbody");
+  const ids = Object.keys(identities).sort((a,b) => parseInt(a) - parseInt(b));
+  
+  if (ids.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#9aa9b2;">No identities yet</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = ids.map(id => {
+    const info = identities[id];
+    const videos = info.videos || [];
+    const isCrossVideo = videos.length > 1;
+    
+    return `
+      <tr>
+        <td><strong>ID ${id}</strong> ${isCrossVideo ? '<span class="cross-video-badge">CROSS-VIDEO</span>' : ''}</td>
+        <td>${videos.join(", ")}</td>
+        <td>${info.count || 0}</td>
+        <td>${new Date(info.first_seen * 1000).toLocaleString()}</td>
+        <td>${new Date(info.last_seen * 1000).toLocaleString()}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Fetch identities on load
+setTimeout(fetchIdentities, 1000);
+setInterval(fetchIdentities, 5000);  // Update every 5 seconds
+</script>
+
+</body>
+</html>

@@ -35,7 +35,7 @@ def get_signboard_guidance(
     signboard_locations: List[str] = Query(
         ..., 
         description="📍 Signboard positions (format: 'r,c'). Click 'Add string item' to add multiple signboards.",
-        example=["3,5", "6,10", "10,15", "15,5", "20,10", "25,15",]
+        example=["3,5", "6,10", "10,15", "15,5", "20,10", "25,15",""]
     )
 ):
     

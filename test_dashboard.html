@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Re-ID System Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        .status {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        pre {
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 20px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #c23654;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Re-ID System Diagnostic</h1>
+    
+    <div class="status">
+        <h2>Status Check</h2>
+        <button onclick="checkStatus()">Check Status</button>
+        <button onclick="checkIdentities()">Check Identities</button>
+        <button onclick="checkWebSocket()">Test WebSocket</button>
+        <pre id="output">Click a button to test...</pre>
+    </div>
+
+    <div class="status">
+        <h2>📍 Important Links</h2>
+        <p><strong>Main Dashboard (NEW):</strong> <a href="/static/index.html" style="color:#4cd3ff">/static/index.html</a></p>
+        <p><strong>API Status:</strong> <a href="/status" style="color:#4cd3ff">/status</a></p>
+        <p><strong>Identities:</strong> <a href="/identities" style="color:#4cd3ff">/identities</a></p>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                output.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function checkIdentities() {
+            try {
+                const res = await fetch('/identities');
+                const data = await res.json();
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                output.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        function checkWebSocket() {
+            output.textContent = 'Connecting to WebSocket...';
+            const ws = new WebSocket('ws://' + window.location.host + '/ws');
+            
+            ws.onopen = () => {
+                output.textContent = '✅ WebSocket Connected!\nWaiting for data...';
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                output.textContent = '📡 Received:\n\n' + JSON.stringify(data, null, 2);
+            };
+
+            ws.onerror = (e) => {
+                output.textContent = '❌ WebSocket Error: ' + e;
+            };
+
+            ws.onclose = () => {
+                output.textContent += '\n\n🔴 WebSocket Closed';
+            };
+
+            setTimeout(() => ws.close(), 10000);
+        }
+
+        // Auto-check on load
+        checkStatus();
+    </script>
+</body>
+</html>
+
+
+
+
+
