@@ -15,7 +15,7 @@ from services.worker import CameraWorker
 from services.identity_manager import IdentityManager
 
 
-router = APIRouter()
+router = APIRouter(prefix="/reid", tags=["reid"])
 # Static files are now mounted in main.py
 
 CAM_WORKERS = {}      # cam_name -> CameraWorker
@@ -27,7 +27,9 @@ DETECTOR = YoloDetector()
 REID = ReIDExtractor()
 
 # GLOBAL IDENTITY MANAGER - This is the key component for cross-video Re-ID
-IDENTITY_MANAGER = IdentityManager(similarity_threshold=0.6)
+# Threshold 0.75 = BALANCED (same person with different poses/angles can match)
+# Cross-video has additional 0.92 threshold to prevent different people matching
+IDENTITY_MANAGER = IdentityManager(similarity_threshold=0.75)
 
 # Each video gets its own tracker instance
 TRACKERS = {}  # cam_name -> DeepSortWrapper

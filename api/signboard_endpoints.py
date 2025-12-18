@@ -11,7 +11,7 @@ from services.fire_model import FireModel
 from services.signboard_system import SignboardGuidanceSystem, generate_signboard_plan
 from services.visualize_signboard import detect_rooms, visualize_signboard_plan
 
-signboard_router = APIRouter()
+signboard_router = APIRouter(tags=["signboard"])
 
 
 

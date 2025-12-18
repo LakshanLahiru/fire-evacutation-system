@@ -6,7 +6,7 @@ import os
 from services.visualize import generate_evacuation_image
 
 
-router = APIRouter()
+router = APIRouter(tags=["evacuation"])
 
 
 

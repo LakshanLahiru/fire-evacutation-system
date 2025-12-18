@@ -6,6 +6,7 @@ from api.endpoints import router as api_router
 from api.human_detection import router as human_detection_router
 from api.signboard_endpoints import signboard_router
 from api.reid import router as reid_router
+from api.stair_case import router as stair_case_router
 
 app = FastAPI(title="Fire Evacuation Route API - Multi-Video Person Re-ID")
 
@@ -17,6 +18,7 @@ app.include_router(api_router)
 app.include_router(human_detection_router)
 app.include_router(signboard_router)
 app.include_router(reid_router)
+app.include_router(stair_case_router)
 
 # Root endpoint - redirect to dashboard
 @app.get("/")

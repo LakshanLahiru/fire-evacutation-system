@@ -36,8 +36,11 @@ class CameraWorker:
         # Local tracking: map local track_id -> global_id
         self.track_to_global: Dict[int, int] = {}
         
+        # Track which local IDs are pending Re-ID matching
+        self.pending_reid: Dict[int, bool] = {}
+        
         # Optimization: Process Re-ID features only every N frames
-        self.reid_frame_skip = 5  # Extract features every 5 frames (faster processing)
+        self.reid_frame_skip = 5  # Extract features every 5 frames (faster, still accurate)
 
     def start(self):
         self._stop = False
@@ -63,90 +66,157 @@ class CameraWorker:
             # Create a copy for display
             display_frame = frame.copy()
 
-            # Detection (always run)
-            dets = self.detector.detect(frame, conf_thresh=0.4)  # Slightly higher threshold for speed
+            # Detection (always run) - Balanced threshold
+            dets = self.detector.detect(frame, conf_thresh=0.4)  # Balanced: catch people but avoid false positives
+            
+            # Filter detections: Remove obvious vehicles and far people
+            h_frame, w_frame = frame.shape[:2]
+            filtered_dets = []
+            for d in dets:
+                x1, y1, x2, y2 = d["bbox"]
+                width = x2 - x1
+                height = y2 - y1
+                
+                # Skip if too small (very far away - unreliable Re-ID)
+                if width < 40 or height < 60:
+                    continue
+                
+                # Skip if too large (likely vehicle or group)
+                if width > w_frame * 0.6 or height > h_frame * 0.7:
+                    continue
+                
+                # Skip if aspect ratio is clearly wrong (vehicles)
+                aspect_ratio = height / (width + 1e-6)
+                if aspect_ratio < 1.2 or aspect_ratio > 4.0:  # Person: 1.2-4.0x taller
+                    continue
+                
+                # Skip if bounding box area is huge (vehicles/buses)
+                bbox_area = width * height
+                frame_area = h_frame * w_frame
+                if bbox_area > frame_area * 0.4:  # Bigger than 40% of frame
+                    continue
+                
+                d["feature"] = None
+                filtered_dets.append(d)
+            
+            dets = filtered_dets
             
             # Extract Re-ID features only every N frames (optimization)
             extract_reid = (frames % self.reid_frame_skip == 0)
-            
-            for d in dets:
-                x1, y1, x2, y2 = d["bbox"]
-                
-                # Only extract features periodically for speed
-                if extract_reid:
-                    # safety crop
-                    h, w = frame.shape[:2]
-                    x1c, y1c = max(0, x1), max(0, y1)
-                    x2c, y2c = min(w - 1, x2), min(h - 1, y2)
-                    if x2c <= x1c or y2c <= y1c:
-                        d["feature"] = None
-                        continue
-                    crop = frame[y1c:y2c, x1c:x2c]
-                    feat = None
-                    try:
-                        feat = self.reid.extract(crop)
-                    except Exception as e:
-                        feat = None
-                    d["feature"] = feat
-                else:
-                    d["feature"] = None  # Skip feature extraction this frame
 
             # Update DeepSORT tracker with detections + features
             tracks = self.tracker.update(dets, frame)
+            
+            # Log track count (only every 30 frames to reduce console spam)
+            if extract_reid and len(tracks) > 0 and frames % 30 == 0:
+                print(f"[{self.cam_name}] Frame {frames}: Processing {len(tracks)} tracks...")
 
             # Match each track to global identity
             tracks_with_global_ids = []
+            features_extracted = 0
+            
+            # Track positions for this frame to check spatial distance
+            track_positions = {}
+            
             for t in tracks:
                 track_id = t["track_id"]
-                feature = t.get("feature")
                 
-                # Check if we already have a global ID for this track
-                if track_id in self.track_to_global:
+                # Extract Re-ID feature directly from track bbox (more reliable)
+                feature = None
+                if extract_reid and self.identity_manager is not None:
+                    x1, y1, x2, y2 = t["bbox"]
+                    h, w = frame.shape[:2]
+                    x1c, y1c = max(0, x1), max(0, y1)
+                    x2c, y2c = min(w, x2), min(h, y2)
+                    
+                    if x2c > x1c and y2c > y1c:
+                        crop = frame[y1c:y2c, x1c:x2c]
+                        try:
+                            feature = self.reid.extract(crop)
+                            if feature is not None:
+                                features_extracted += 1
+                        except Exception as e:
+                            print(f"[{self.cam_name}] Feature extraction failed: {e}")
+                            feature = None
+                
+                # Priority 1: If we have a feature this frame, use it for matching
+                if feature is not None and self.identity_manager is not None:
+                    # Match to global identity using Re-ID feature
+                    global_id, is_new, similarity = self.identity_manager.register_or_match(
+                        feature, self.cam_name
+                    )
+                    
+                    # Store or update the global ID mapping
+                    old_id = self.track_to_global.get(track_id, None)
+                    self.track_to_global[track_id] = global_id
+                    self.pending_reid[track_id] = False
+                    
+                    # Log identity assignment
+                    if old_id is None or old_id == "?":
+                        if is_new:
+                            print(f"[{self.cam_name}] ✨ NEW PERSON: Global ID {global_id} - CREATED")
+                        else:
+                            print(f"[{self.cam_name}] ✅ MATCHED: Global ID {global_id} (similarity: {similarity:.3f})")
+                
+                # Priority 2: If we already have a global ID for this track, use it
+                elif track_id in self.track_to_global and self.track_to_global[track_id] != "?":
                     global_id = self.track_to_global[track_id]
+                
+                # Priority 3: Track exists but no feature yet - mark as pending
                 else:
-                    # Try to match to global identity using Re-ID feature
-                    global_id = None
-                    if feature is not None and self.identity_manager is not None:
-                        global_id, is_new, similarity = self.identity_manager.register_or_match(
-                            feature, self.cam_name
-                        )
-                        self.track_to_global[track_id] = global_id
-                    else:
-                        # No feature - use local track ID temporarily
-                        # Will be updated when features are extracted
-                        global_id = track_id
-                        if extract_reid and self.identity_manager is not None:
-                            # Store for next feature extraction
-                            self.track_to_global[track_id] = global_id
+                    global_id = "?"
+                    self.pending_reid[track_id] = True
+                
+                # Store position for spatial distance checking
+                if global_id != "?":
+                    x1, y1, x2, y2 = t["bbox"]
+                    center_x = (x1 + x2) / 2
+                    center_y = (y1 + y2) / 2
+                    track_positions[global_id] = (center_x, center_y)
                 
                 tracks_with_global_ids.append({
                     "local_track_id": track_id,
                     "global_id": global_id,
                     "bbox": t["bbox"],
-                    "conf": t.get("conf", 0.0)
+                    "conf": t.get("conf", 0.0),
+                    "pending": global_id == "?"
                 })
+            
+            # Log feature extraction results (only every 30 frames)
+            if extract_reid and len(tracks) > 0 and frames % 30 == 0:
+                print(f"[{self.cam_name}] Frame {frames}: Extracted {features_extracted}/{len(tracks)} features")
 
             # DRAW PERSON IDs ON VIDEO
             for t in tracks_with_global_ids:
                 x1, y1, x2, y2 = t["bbox"]
                 global_id = t["global_id"]
                 conf = t["conf"]
+                is_pending = t.get("pending", False)
                 
-                # Generate consistent color for this ID
-                # Ensure global_id is integer
-                id_num = int(global_id) if isinstance(global_id, (int, float, str)) else hash(str(global_id))
-                
-                # Use hash-based color generation (consistent per ID)
-                color_r = (id_num * 67) % 156 + 100
-                color_g = (id_num * 131) % 156 + 100
-                color_b = (id_num * 199) % 156 + 100
-                color = (color_b, color_g, color_r)  # BGR format for OpenCV
+                # Different display for pending vs confirmed IDs
+                if is_pending or global_id == "?":
+                    # Pending ID - show as "?" with gray color
+                    label = "ID: ?"
+                    color = (128, 128, 128)  # Gray for pending
+                else:
+                    # Confirmed ID - use consistent color
+                    try:
+                        id_num = int(global_id) if isinstance(global_id, (int, float)) else int(str(global_id))
+                    except (ValueError, TypeError):
+                        id_num = hash(str(global_id))
+                    
+                    # Use hash-based color generation (consistent per ID)
+                    color_r = (id_num * 67) % 156 + 100
+                    color_g = (id_num * 131) % 156 + 100
+                    color_b = (id_num * 199) % 156 + 100
+                    color = (color_b, color_g, color_r)  # BGR format for OpenCV
+                    
+                    label = f"ID: {global_id}"
                 
                 # Draw bounding box
                 cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 3)
                 
                 # Draw ID label with background
-                label = f"ID: {global_id}"
                 label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
                 
                 # Draw background rectangle for text
@@ -166,18 +236,22 @@ class CameraWorker:
             prev_time = curr_time
             density = person_count / (self.area_m2 + 1e-9)
 
-            # Get unique global IDs in this frame
-            unique_global_ids = list(set(t["global_id"] for t in tracks_with_global_ids))
+            # Get unique global IDs in this frame (only confirmed, not pending)
+            confirmed_tracks = [t for t in tracks_with_global_ids if not t.get("pending", False) and t["global_id"] != "?"]
+            unique_global_ids = list(set(t["global_id"] for t in confirmed_tracks))
+            pending_count = len([t for t in tracks_with_global_ids if t.get("pending", False) or t["global_id"] == "?"])
 
             # Draw overall statistics on frame
             cv2.putText(display_frame, f"Video: {self.cam_name}", (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(display_frame, f"Persons: {person_count}", (10, 60),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(display_frame, f"Unique IDs: {len(unique_global_ids)}", (10, 90),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(display_frame, f"FPS: {fps:.1f}", (10, 120),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            cv2.putText(display_frame, f"Persons: {person_count}", (10, 55),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(display_frame, f"Confirmed IDs: {len(unique_global_ids)}", (10, 80),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(display_frame, f"Pending: {pending_count}", (10, 105),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (128, 128, 128), 2)
+            cv2.putText(display_frame, f"FPS: {fps:.1f}", (10, 130),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
             # Resize display frame to 1/4 size for smaller window
             display_h, display_w = display_frame.shape[:2]

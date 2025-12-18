@@ -97,26 +97,48 @@ class IdentityManager:
             matched_id, similarity = self.find_best_match(feature)
             
             if matched_id is not None:
-                # Update the stored feature with running average (optional, for robustness)
-                # This helps improve feature quality over multiple observations
-                alpha = 0.3  # Weight for new feature
-                old_feat = self.identity_db[matched_id]
-                updated_feat = (1 - alpha) * old_feat + alpha * feature
-                # Re-normalize
-                updated_feat = updated_feat / (np.linalg.norm(updated_feat) + 1e-8)
-                self.identity_db[matched_id] = updated_feat
+                # Check if this is a cross-video match (person in new video)
+                existing_videos = self.identity_metadata[matched_id]["videos"]
+                is_cross_video = video_name not in existing_videos
                 
-                # Update metadata
-                self.identity_metadata[matched_id]["last_seen"] = time.time()
-                self.identity_metadata[matched_id]["count"] += 1
-                self.identity_metadata[matched_id]["videos"].add(video_name)
+                # TWO-TIER MATCHING SYSTEM:
+                # Same video: Use base threshold (0.75) - person with different pose/angle
+                # Cross-video: Require 0.92+ - prevent different people from matching
                 
-                # Track in video
-                self.video_identities[video_name].add(matched_id)
+                if is_cross_video and similarity < 0.92:
+                    # Similarity not high enough for cross-video match
+                    # Different people with similar clothes should NOT match
+                    print(f"⚠️  Cross-video match REJECTED: sim={similarity:.3f} < 0.92 threshold")
+                    matched_id = None  # Will create new ID below
+                else:
+                    # Good match - update feature SLIGHTLY to handle pose/lighting changes
+                    # But keep weight very small to prevent drift
+                    if is_cross_video:
+                        alpha = 0.05  # 5% update for cross-video (very conservative)
+                    else:
+                        alpha = 0.10  # 10% update for same-video (handle pose changes)
+                    
+                    old_feat = self.identity_db[matched_id]
+                    updated_feat = (1 - alpha) * old_feat + alpha * feature
+                    # Re-normalize
+                    updated_feat = updated_feat / (np.linalg.norm(updated_feat) + 1e-8)
+                    self.identity_db[matched_id] = updated_feat
+                    
+                    # Update metadata
+                    self.identity_metadata[matched_id]["last_seen"] = time.time()
+                    self.identity_metadata[matched_id]["count"] += 1
+                    self.identity_metadata[matched_id]["videos"].add(video_name)
+                    
+                    if is_cross_video:
+                        print(f"🌟 CROSS-VIDEO MATCH! ID {matched_id} in {len(self.identity_metadata[matched_id]['videos'])} videos (sim: {similarity:.3f})")
                 
-                return matched_id, False, similarity
+                    # Track in video
+                    self.video_identities[video_name].add(matched_id)
+                    
+                    return matched_id, False, similarity
             
-            else:
+            # No match found OR cross-video match rejected - create new identity
+            if matched_id is None:
                 # Create new identity
                 new_id = self.next_id
                 self.next_id += 1

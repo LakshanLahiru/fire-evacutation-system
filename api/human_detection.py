@@ -9,7 +9,7 @@ from typing import List
 from fastapi import WebSocketDisconnect
 import copy
 
-router = APIRouter()
+router = APIRouter(tags=["human_detection"])
 detector = ThermalHumanDetector()
 threads = {"video": None, "webcam": None}
 
